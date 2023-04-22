@@ -2,37 +2,13 @@ import discord  # interacts with discord messages
 import time
 from datetime import datetime
 import requests
-import googlemaps  # used for cmd_sunlight for geocoding
+import json
 import tokens
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)  # login to discord
-gmaps = googlemaps.Client(tokens.GOOGLEMAPS)  # login to googlemaps
-
-
-async def cmd_countdown(msg):
-    """
-    Input: $countdown X
-    Output: begin counting down from X
-    :param msg: message object
-    :return: nothing
-    """
-    wordlist = msg.content.split()
-    count = 1
-    for i in wordlist:
-        if i.isdigit():
-            count = int(i)
-            pass
-    if count < 10:
-        for i in range(count):
-            await msg.channel.send(count - i)
-            time.sleep(1)
-        await msg.channel.send("We have liftoff!")
-        return
-    await msg.channel.send("I can't count from that high.")
-    return
 
 
 async def cmd_sunlight(msg):
@@ -42,10 +18,12 @@ async def cmd_sunlight(msg):
     """
     wordlist = msg.content[10:]  # cut off the command and look at parameter
     try:
-        geocode_result = gmaps.geocode(wordlist)[0]
-        lat = float(geocode_result['geometry']['location']['lat'])
-        lng = float(geocode_result['geometry']['location']['lng'])
-        location = geocode_result['formatted_address']
+        bing_maps = requests.get('http://dev.virtualearth.net/REST/v1/Locations/?query={}?&maxResults=1&key={}'.format(wordlist, tokens.BINGMAP))
+        result = json.loads(bing_maps.content.decode('utf-8'))
+        geocode_result = result['resourceSets'][0]['resources'][0]
+        lat = float(geocode_result["point"]["coordinates"][0])
+        lng = float(geocode_result["point"]["coordinates"][1])
+        location = geocode_result["name"]
 
         response = requests.get('https://api.sunrise-sunset.org/json?lat={}&lng={}&formatted=0'.format(lat, lng))
         parsed_response = response.json()['results']
@@ -54,7 +32,7 @@ async def cmd_sunlight(msg):
         unixtime_sunset = int(datetime.strptime(parsed_response['sunset'], '%Y-%m-%dT%H:%M:%S%z').timestamp())
 
         msg_to_send = "Sunrise/sunset time from <https://sunrise-sunset.org/api>\n" \
-                      + "Geocoding from <https://developers.google.com/maps/documentation/geocoding>\n" \
+                      + "Geocoding from Bing Maps\n" \
                       + "Location: {}\n".format(location) \
                       + "Coordinate: {}, {}\n".format(lat, lng) \
                       + "Sunrise: <t:{}>\n".format(unixtime_sunrise) \
@@ -75,10 +53,12 @@ async def cmd_whereis(msg):
     """
     wordlist = msg.content[9:]
     try:
-        geocode_result = gmaps.geocode(wordlist)[0]
-        await msg.channel.send("{}".format(geocode_result['formatted_address']) +
-                               ' is located at \nLatitude: {}'.format(geocode_result['geometry']['location']['lat']) +
-                               '\nLongitude: {}'.format(geocode_result['geometry']['location']['lng']))
+        bing_maps = requests.get('http://dev.virtualearth.net/REST/v1/Locations/?query={}?&maxResults=1&key={}'.format(wordlist, tokens.BINGMAP))
+        result = json.loads(bing_maps.content.decode('utf-8'))
+        geocode_result = result['resourceSets'][0]['resources'][0]
+
+        await msg.channel.send("{}".format(geocode_result['address']['formattedAddress']) +
+                               ' is located at {}'.format(geocode_result['point']['coordinates']))
         return
 
     except:
@@ -102,13 +82,15 @@ async def cmd_unixtime(msg):
     return
 
 
-async def cmd_whatTimeAt(msg):
-    wordlist = msg.content[12:]
-    geocode_result = gmaps.geocode(wordlist)[0]
-
-    address = geocode_result['formatted_address']
-    lat = geocode_result['geometry']['location']['lat']
-    lng = geocode_result['geometry']['location']['lng']
+async def cmd_whatTimeIsIt(msg):
+    wordlist = msg.content[14:]
+    bing_maps = requests.get(
+        'http://dev.virtualearth.net/REST/v1/Locations/?query={}?&maxResults=1&key={}'.format(wordlist, tokens.BINGMAP))
+    result = json.loads(bing_maps.content.decode('utf-8'))
+    geocode_result = result['resourceSets'][0]['resources'][0]
+    address = geocode_result['address']['formattedAddress']
+    lat = geocode_result['point']['coordinates'][0]
+    lng = geocode_result['point']['coordinates'][1]
 
     local_time = requests.get(
         ('https://www.timeapi.io/api/Time/current/coordinate?latitude={}&longitude={}'
